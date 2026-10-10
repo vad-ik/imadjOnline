@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Imadj Online</title>
+  <link rel="stylesheet" href="/css/app.css?v=4">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">Imadj <span>Online</span></div>
+      <div class="nav-actions">
+        <div id="userChip" class="user-chip"></div>
+        <a class="btn btn-ghost" href="/profile.html">Колоды</a>
+        <a class="btn btn-ghost" id="profileLink" href="/profile.html" hidden>Профиль</a>
+        <button class="btn" id="authBtn" type="button">Войти</button>
+      </div>
+    </header>
+
+    <div id="debugBar" class="panel" style="margin-bottom:1rem;font-size:0.85rem;color:#9bb3bd">
+      debug: загрузка…
+    </div>
+
+    <div class="grid-lobby">
+      <section class="panel">
+        <div class="stage-banner">
+          <h1>Лобби</h1>
+          <button class="btn" id="refreshBtn" type="button">Обновить</button>
+        </div>
+        <p class="muted small">Комнаты в памяти сервера. После пересборки docker они сбрасываются.</p>
+        <div id="gameList" class="game-list" style="margin-top:1rem"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Новая игра</h2>
+        <form id="createForm" class="form">
+          <label>Название комнаты
+            <input name="name" id="roomName" maxlength="80" required placeholder="Вечерний имаджинариум">
+          </label>
+          <button class="btn btn-primary" type="submit">Создать и войти</button>
+        </form>
+      </section>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="authModal">
+    <div class="modal">
+      <h2 id="authTitle" style="margin:0 0 0.35rem">Вход</h2>
+      <p class="muted small" id="authSubtitle" style="margin:0 0 1rem">Уже есть аккаунт — войди по логину и паролю.</p>
+      <div class="tabs">
+        <button class="tab active" data-tab="login" type="button">Войти</button>
+        <button class="tab" data-tab="register" type="button">Создать аккаунт</button>
+      </div>
+      <form id="loginForm" class="form">
+        <label>Логин <input name="username" autocomplete="username" required></label>
+        <label>Пароль <input name="password" type="password" autocomplete="current-password" required></label>
+        <button class="btn btn-primary" type="submit">Войти</button>
+      </form>
+      <form id="registerForm" class="form" hidden>
+        <label>Логин <input name="username" minlength="3" autocomplete="username" required></label>
+        <label>Отображаемое имя <input name="displayName" maxlength="64" required></label>
+        <label>Пароль <input name="password" type="password" minlength="6" autocomplete="new-password" required></label>
+        <button class="btn btn-primary" type="submit">Зарегистрироваться</button>
+      </form>
+      <button class="btn btn-ghost" style="margin-top:0.8rem;width:100%" id="closeAuth" type="button">Закрыть</button>
+    </div>
+  </div>
+
+  <script>
+    // Inline on purpose — avoids stale cached /js/*.js
+    (function () {
+      const debugBar = document.getElementById('debugBar');
+      const gameList = document.getElementById('gameList');
+      const userChip = document.getElementById('userChip');
+      const authModal = document.getElementById('authModal');
+      const authBtn = document.getElementById('authBtn');
+      let me = null;
+
+      function dbg(msg) {
+        const line = '[' + new Date().toLocaleTimeString() + '] ' + msg;
+        console.log(line);
+        debugBar.textContent = line;
+      }
+
+      function toast(message) {
+        let el = document.getElementById('toast');
+        if (!el) {
+          el = document.createElement('div');
+          el.id = 'toast';
+          el.className = 'toast';
+          document.body.appendChild(el);
+        }
+        el.textContent = message;
+        el.classList.add('show');
+        clearTimeout(el._t);
+        el._t = setTimeout(() => el.classList.remove('show'), 5000);
+      }
+
+      async function api(path, options = {}) {
+        const headers = Object.assign({}, options.headers || {});
+        let body = options.body;
+        if (body && !(body instanceof FormData) && typeof body === 'object') {
+          headers['Content-Type'] = 'application/json';
+          body = JSON.stringify(body);
+        }
+        dbg((options.method || 'GET') + ' ' + path);
+        const res = await fetch(path, {
+          method: options.method || 'GET',
+          credentials: 'same-origin',
+          cache: 'no-store',
+          headers: headers,
+          body: body
+        });
+        const text = await res.text();
+        let data = null;
+        try { data = text ? JSON.parse(text) : null; } catch (e) { data = { message: text }; }
+        dbg((options.method || 'GET') + ' ' + path + ' -> ' + res.status);
+        if (!res.ok) {
+          throw new Error((data && (data.message || data.error)) || ('HTTP ' + res.status));
+        }
+        return data;
+      }
+
+      function escapeHtml(s) {
+        return String(s).replace(/[&<>"']/g, function (c) {
+          return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c];
+        });
+      }
+
+      async function refreshMe() {
+        me = await api('/api/auth/me');
+        const profileLink = document.getElementById('profileLink');
+        if (!me || !me.id) {
+          userChip.innerHTML = '<span class="muted small">Гость · ' + escapeHtml(me && me.displayName || '') + '</span>';
+          authBtn.textContent = 'Войти';
+          if (profileLink) profileLink.hidden = true;
+        } else {
+          const avatar = me.avatarUrl
+            ? '<img src="' + me.avatarUrl + '" alt="">'
+            : '<div class="avatar"></div>';
+          userChip.innerHTML = avatar + '<span>' + escapeHtml(me.displayName) + '</span>';
+          authBtn.textContent = 'Выйти';
+          if (profileLink) profileLink.hidden = false;
+        }
+      }
+
+      async function loadGames() {
+        const games = await api('/api/games');
+        const list = Array.isArray(games) ? games : [];
+        dbg('rooms in list: ' + list.length);
+        if (!list.length) {
+          gameList.innerHTML = '<div class="empty">Пока нет комнат — создай первую</div>';
+          return;
+        }
+        gameList.innerHTML = list.map(function (g) {
+          return '<article class="game-card">' +
+            '<div><strong>' + escapeHtml(g.name) + '</strong>' +
+            '<div class="muted small">' + g.playerCount + '/' + g.maxPlayers +
+            ' игроков · id ' + escapeHtml(g.id) + ' · ' + escapeHtml(g.status) + '</div></div>' +
+            '<a class="btn btn-primary" href="/game.html?id=' + encodeURIComponent(g.id) + '">Войти</a>' +
+            '</article>';
+        }).join('');
+      }
+
+      document.getElementById('createForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        const name = String(document.getElementById('roomName').value || '').trim();
+        if (!name) {
+          toast('Введи название');
+          return;
+        }
+        try {
+          dbg('creating room: ' + name);
+          const created = await api('/api/games', { method: 'POST', body: { name: name } });
+          dbg('created id=' + (created && created.id));
+          if (!created || !created.id) throw new Error('Нет id в ответе');
+          await api('/api/games/' + created.id + '/join', { method: 'POST' });
+          window.location.href = '/game.html?id=' + encodeURIComponent(created.id);
+        } catch (err) {
+          console.error(err);
+          toast('Создание: ' + (err.message || err));
+          dbg('create ERROR: ' + (err.message || err));
+        }
+      });
+
+      document.getElementById('refreshBtn').addEventListener('click', function () {
+        loadGames().catch(function (err) { toast(err.message); });
+      });
+
+      authBtn.addEventListener('click', async function () {
+        if (me && me.id) {
+          await api('/api/auth/logout', { method: 'POST' });
+          await refreshMe();
+          toast('Вы вышли');
+          return;
+        }
+        authModal.classList.add('open');
+      });
+      document.getElementById('closeAuth').addEventListener('click', function () {
+        authModal.classList.remove('open');
+      });
+      function showAuthTab(which) {
+        const isLogin = which === 'login';
+        document.querySelectorAll('.tab').forEach(function (t) {
+          t.classList.toggle('active', t.getAttribute('data-tab') === which);
+        });
+        document.getElementById('loginForm').hidden = !isLogin;
+        document.getElementById('registerForm').hidden = isLogin;
+        document.getElementById('authTitle').textContent = isLogin ? 'Вход' : 'Регистрация';
+        document.getElementById('authSubtitle').textContent = isLogin
+          ? 'Уже есть аккаунт — войди по логину и паролю.'
+          : 'Новый аккаунт: логин, имя в игре и пароль.';
+      }
+      document.querySelectorAll('.tab').forEach(function (tab) {
+        tab.addEventListener('click', function () {
+          showAuthTab(tab.getAttribute('data-tab'));
+        });
+      });
+      document.getElementById('loginForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        try {
+          await api('/api/auth/login', {
+            method: 'POST',
+            body: { username: fd.get('username'), password: fd.get('password') }
+          });
+          authModal.classList.remove('open');
+          await refreshMe();
+          toast('Ок');
+        } catch (err) { toast(err.message); }
+      });
+      document.getElementById('registerForm').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        try {
+          await api('/api/auth/register', {
+            method: 'POST',
+            body: {
+              username: fd.get('username'),
+              displayName: fd.get('displayName'),
+              password: fd.get('password')
+            }
+          });
+          authModal.classList.remove('open');
+          await refreshMe();
+          toast('Аккаунт создан');
+        } catch (err) { toast(err.message); }
+      });
+
+      if (navigator.serviceWorker) {
+        navigator.serviceWorker.getRegistrations().then(function (regs) {
+          regs.forEach(function (r) { r.unregister(); });
+        }).catch(function () {});
+      }
+
+      (async function () {
+        try {
+          dbg('boot ok, loading…');
+          await refreshMe();
+          await loadGames();
+          setInterval(function () {
+            loadGames().catch(function (e) { dbg('poll err: ' + e.message); });
+          }, 3000);
+        } catch (err) {
+          dbg('BOOT ERROR: ' + (err.message || err));
+          toast('Ошибка: ' + (err.message || err));
+        }
+      })();
+    })();
+  </script>
+</body>
+</html>

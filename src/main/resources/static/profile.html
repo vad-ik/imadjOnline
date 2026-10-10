@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Профиль · Imadj Online</title>
+  <link rel="stylesheet" href="/css/app.css?v=10">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/">Imadj <span>Online</span></a>
+      <div class="nav-actions">
+        <a class="btn btn-ghost" href="/">Лобби</a>
+      </div>
+    </header>
+
+    <div id="debugBar" class="panel" style="margin-bottom:1rem;font-size:0.85rem;color:#9bb3bd">debug: profile…</div>
+
+    <div id="guestGate" class="panel" hidden>
+      <h1>Гость</h1>
+      <p class="muted">Публичные колоды можно листать без аккаунта. Создавать и редактировать — после регистрации.</p>
+      <a class="btn btn-primary" href="/">Войти / зарегистрироваться</a>
+    </div>
+
+    <div id="profileRoot" class="profile-layout" hidden>
+      <section class="panel">
+        <h1>Профиль</h1>
+        <div class="form" id="profileForm">
+          <div style="display:flex;gap:0.8rem;align-items:center">
+            <img id="avatarPreview" class="avatar" style="width:72px;height:72px;background:#1d3340;object-fit:cover" alt="">
+            <label class="btn">Сменить фото
+              <input id="avatarInput" type="file" accept="image/*" hidden>
+            </label>
+          </div>
+          <label>Ник
+            <input id="displayName" maxlength="64">
+          </label>
+          <p class="muted small" id="usernameLine"></p>
+          <button class="btn btn-primary" id="saveProfile" type="button">Сохранить</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="stage-banner">
+          <h2>Мои колоды</h2>
+          <button class="btn btn-primary" id="newDeckBtn" type="button">Новая колода</button>
+        </div>
+        <p class="muted small">Только свои: загрузка, нарезка, удаление.</p>
+        <div id="myDecks" class="deck-grid"></div>
+      </section>
+    </div>
+
+    <section class="panel" id="publicSection" style="margin-top:1rem">
+      <div class="stage-banner">
+        <div>
+          <h2>Публичные колоды</h2>
+          <p class="muted small">Листать может любой. Редактировать — только автор (в «Мои колоды»).</p>
+        </div>
+        <button class="btn" id="refreshPublicBtn" type="button">Обновить</button>
+      </div>
+      <div id="publicDecks" class="deck-grid"></div>
+
+      <div id="deckViewer" hidden style="margin-top:1.2rem">
+        <div class="stage-banner">
+          <h3 id="deckViewerTitle">Колода</h3>
+          <div class="form-row" id="deckEditActions" hidden>
+            <label class="btn">Добавить карты
+              <input id="cardFiles" type="file" accept="image/*" multiple hidden>
+            </label>
+            <button class="btn" id="sheetCutBtn" type="button">Нарезать лист</button>
+            <button class="btn" id="flipDeckBtn" type="button">Перевернуть колоду</button>
+            <button class="btn btn-danger" id="deleteDeckBtn" type="button">Удалить колоду</button>
+          </div>
+        </div>
+        <p class="muted small" id="deckViewerHint"></p>
+        <div id="cardGrid" class="card-grid"></div>
+        <div class="pager">
+          <button class="btn" id="prevPage" type="button">Назад</button>
+          <span class="muted small" id="pageInfo"></span>
+          <button class="btn" id="nextPage" type="button">Вперёд</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" id="newDeckModal" aria-hidden="true">
+    <div class="modal">
+      <h2>Новая колода</h2>
+      <form id="createDeckForm" class="form">
+        <label>Название <input name="name" required maxlength="255"></label>
+        <label style="display:flex;align-items:center;gap:0.5rem;flex-direction:row">
+          <input type="checkbox" name="isPublic" checked> Публичная (видна всем)
+        </label>
+        <button class="btn btn-primary" type="submit">Создать</button>
+      </form>
+      <button class="btn btn-ghost" style="margin-top:0.7rem;width:100%" id="closeDeckModal" type="button">Закрыть</button>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="sheetModal" aria-hidden="true">
+    <div class="modal sheet-modal">
+      <h2>Нарезать лист</h2>
+      <p class="muted small">Превью — первая страница. PDF режется целиком тем же шаблоном. Координаты в пикселях исходника. Точка — где низ карты на листе.</p>
+      <label class="btn" style="display:inline-flex;margin:0.6rem 0">
+        Выбрать файл
+        <input id="sheetFile" type="file" accept="image/*,application/pdf,.pdf" hidden>
+      </label>
+      <div class="sheet-layout">
+        <div class="sheet-preview-wrap">
+          <canvas id="sheetPreview"></canvas>
+          <p class="muted small" id="sheetSourceInfo">Файл не выбран</p>
+        </div>
+        <div class="form sheet-settings">
+          <label>Ширина карты (px) <input id="sheetCardW" type="number" min="8" value="300"></label>
+          <label>Высота карты (px) <input id="sheetCardH" type="number" min="8" value="420"></label>
+          <label>Отступ X (px) <input id="sheetOffsetX" type="number" min="0" value="0"></label>
+          <label>Отступ Y (px) <input id="sheetOffsetY" type="number" min="0" value="0"></label>
+          <label>Столбцов <input id="sheetCols" type="number" min="1" max="40" value="3"></label>
+          <label>Строк <input id="sheetRows" type="number" min="1" max="40" value="3"></label>
+          <label>Поворот карты
+            <select id="sheetRotation">
+              <option value="0">Как на листе (низ снизу)</option>
+              <option value="90">Низ слева → 90°</option>
+              <option value="-90">Низ справа → −90°</option>
+              <option value="180">Низ сверху → 180°</option>
+              <option value="mirror-cols">2 столбца: слева← низ, справа→ низ</option>
+              <option value="flip-cols-ud">2 столбца: слева низ сверху, справа верх сверху</option>
+            </select>
+          </label>
+          <p class="muted small" id="sheetCountHint">Получится 9 карт</p>
+          <div class="form-row">
+            <button class="btn btn-primary" id="sheetCutConfirm" type="button" disabled>Нарезать и загрузить</button>
+            <button class="btn btn-ghost" id="sheetModalClose" type="button">Закрыть</button>
+          </div>
+          <p class="muted small" id="sheetProgress" hidden></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    (function () {
+      var t = Date.now();
+      function load(src) {
+        return new Promise(function (resolve, reject) {
+          var s = document.createElement('script');
+          s.src = src + (src.indexOf('?') >= 0 ? '&' : '?') + 't=' + t;
+          s.onload = resolve;
+          s.onerror = reject;
+          document.body.appendChild(s);
+        });
+      }
+      load('/js/api.js?v=13').then(function () { return load('/js/profile.js?v=13'); })
+        .catch(function (e) {
+          var bar = document.getElementById('debugBar');
+          if (bar) bar.textContent = 'SCRIPT LOAD FAIL: ' + e;
+        });
+    })();
+  </script>
+</body>
+</html>

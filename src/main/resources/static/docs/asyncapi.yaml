@@ -1,0 +1,83 @@
+asyncapi: 3.0.0
+info:
+  title: Imadj Online Game WebSocket
+  version: 0.1.0
+  description: |
+    Канал живой игры. OpenAPI/Swagger покрывает только HTTP;
+    для WebSocket используют AsyncAPI (этот файл).
+
+    Подключение: `ws://{host}/ws/game?gameId={id}&clientId={optional}`
+    Идентичность берётся из cookie/сессии на handshake; query `clientId` — запасной seat.
+
+servers:
+  local:
+    host: localhost:1234
+    pathname: /ws/game
+    protocol: ws
+
+channels:
+  game:
+    address: /ws/game
+    messages:
+      clientToServer:
+        $ref: '#/components/messages/ClientMessage'
+      serverState:
+        $ref: '#/components/messages/StateMessage'
+      serverError:
+        $ref: '#/components/messages/ErrorMessage'
+
+operations:
+  sendCommand:
+    action: send
+    channel:
+      $ref: '#/channels/game'
+    messages:
+      - $ref: '#/channels/game/messages/clientToServer'
+  receiveState:
+    action: receive
+    channel:
+      $ref: '#/channels/game'
+    messages:
+      - $ref: '#/channels/game/messages/serverState'
+      - $ref: '#/channels/game/messages/serverError'
+
+components:
+  messages:
+    ClientMessage:
+      name: ClientMessage
+      payload:
+        type: object
+        required: [type]
+        properties:
+          type:
+            type: string
+            enum: [SET_ASSOCIATION, PLAY_CARD, VOTE, NEXT_ROUND, PING]
+          association:
+            type: string
+            description: Тема ведущего (SET_ASSOCIATION)
+          cardId:
+            type: string
+          voteCardId:
+            type: string
+            description: Альтернатива cardId для VOTE
+    StateMessage:
+      name: StateMessage
+      payload:
+        type: object
+        properties:
+          type:
+            const: STATE
+          state:
+            type: object
+            description: Тот же GameStateView, что и HTTP GET /api/games/{id}
+    ErrorMessage:
+      name: ErrorMessage
+      payload:
+        type: object
+        properties:
+          type:
+            const: ERROR
+          error:
+            type: string
+          message:
+            type: string

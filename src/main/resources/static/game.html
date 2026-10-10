@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>Игра · Imadj Online</title>
+  <link rel="stylesheet" href="/css/app.css?v=9">
+</head>
+<body>
+  <div id="cardInspect" class="card-inspect" hidden>
+    <div class="card-inspect-panel">
+      <img id="cardInspectImg" alt="card">
+      <div class="card-inspect-actions">
+        <button class="btn btn-primary" id="cardInspectConfirm" type="button" hidden>Подтвердить</button>
+        <button class="btn" id="cardInspectClose" type="button">Закрыть</button>
+      </div>
+    </div>
+  </div>
+  <div class="app-shell">
+    <header class="topbar">
+      <a class="brand" href="/">Imadj <span>Online</span></a>
+      <div class="nav-actions">
+        <div id="userChip" class="user-chip"></div>
+        <button class="btn" id="leaveBtn" type="button">Выйти из комнаты</button>
+        <a class="btn btn-ghost" id="lobbyLink" href="/">К списку</a>
+      </div>
+    </header>
+
+    <div id="debugBar" class="panel" style="margin-bottom:1rem;font-size:0.85rem;color:#9bb3bd">debug: game…</div>
+
+    <div class="layout-game">
+      <aside class="panel score-side">
+        <h2>Счёт</h2>
+        <div id="scoreList" class="score-list"></div>
+        <div id="scoringHint" class="hint"></div>
+      </aside>
+
+      <main>
+        <section class="panel" id="lobbyPanel">
+          <div class="stage-banner">
+            <div>
+              <h1 id="roomTitle">Загрузка комнаты…</h1>
+              <p class="muted small" id="roomMeta"></p>
+            </div>
+            <div class="form-row">
+              <button class="btn" id="unreadyBtn" type="button" hidden>Не готов</button>
+              <button class="btn btn-primary" id="readyBtn" type="button">Готов</button>
+            </div>
+          </div>
+          <div id="playerPills" class="player-pills"></div>
+          <div id="botVoteBox" class="form" style="margin:1rem 0" hidden>
+            <h3>Доп. игрок</h3>
+            <p class="muted small" id="botVoteMeta">Только хост комнаты может добавить «Кисоньку Сосисоньку»: рандомно кидает карты, не голосует и не ведёт.</p>
+            <div class="form-row">
+              <button class="btn btn-primary" id="botVoteYesBtn" type="button">Добавить Кисоньку</button>
+              <button class="btn" id="botVoteNoBtn" type="button">Убрать Кисоньку</button>
+            </div>
+          </div>
+          <h3>Выбор колод</h3>
+          <p class="muted small">Каждая колода учитывается один раз, даже если её выбрали несколько игроков. Нужно ≥3 человека.</p>
+          <div id="deckGrid" class="deck-grid" style="margin-top:0.8rem"></div>
+        </section>
+
+        <section class="panel" id="playPanel" hidden>
+          <div class="stage-banner">
+            <div>
+              <h2 id="stageTitle">Игра</h2>
+              <p class="muted small" id="stageHelp"></p>
+            </div>
+            <span class="badge playing" id="roundBadge"></span>
+          </div>
+          <p class="association" id="associationText" hidden></p>
+
+          <div id="waitMasterBox" class="hint" hidden style="margin:1rem 0">Жди: ведущий загадывает тему…</div>
+
+          <div id="tableSection" hidden>
+            <h3>Стол</h3>
+            <p class="muted small">Клик по карте — приблизить / закрыть. Подтвердить выбор — кнопкой под увеличенной картой. Свою карту выбрать нельзя; ведущий только смотрит.</p>
+            <div id="tableGrid" class="table-grid"></div>
+          </div>
+
+          <div id="assocForm" class="form" hidden style="margin:1rem 0">
+            <label>Ассоциация / тема
+              <input id="associationInput" maxlength="120" placeholder="Например: тихий бунт">
+            </label>
+            <button class="btn btn-primary" id="submitAssocBtn" type="button">Загадать</button>
+          </div>
+
+          <div id="resultsBox" hidden style="margin:1rem 0">
+            <h3>Итоги раунда</h3>
+            <div id="resultsDelta" class="score-list"></div>
+            <button class="btn btn-primary" id="nextRoundBtn" type="button" style="margin-top:0.8rem">Следующий раунд</button>
+          </div>
+
+          <div id="gameOverBox" hidden style="margin:1rem 0">
+            <h3>Финал</h3>
+            <p class="muted">Карты закончились. Смотри итоговый счёт слева.</p>
+          </div>
+
+          <h3 style="margin-top:1rem">Твоя рука</h3>
+          <p class="muted small">Клик — приблизить. Чтобы положить карту — подтверди кнопкой под увеличением.</p>
+          <div id="handGrid" class="hand-grid"></div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    window.addEventListener('error', function (e) {
+      var bar = document.getElementById('debugBar');
+      if (bar) bar.textContent = 'JS ERROR: ' + e.message;
+    });
+    // Cache-bust: never load a stale game.js (users were stuck on ?v=5).
+    (function () {
+      var v = Date.now();
+      function load(src) {
+        return new Promise(function (resolve, reject) {
+          var s = document.createElement('script');
+          s.src = src + (src.indexOf('?') >= 0 ? '&' : '?') + 't=' + v;
+          s.onload = resolve;
+          s.onerror = reject;
+          document.body.appendChild(s);
+        });
+      }
+      load('/js/api.js?v=9').then(function () { return load('/js/game.js?v=9'); })
+        .catch(function (e) {
+          var bar = document.getElementById('debugBar');
+          if (bar) bar.textContent = 'SCRIPT LOAD FAIL: ' + e;
+        });
+    })();
+  </script>
+</body>
+</html>
